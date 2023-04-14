@@ -3,12 +3,12 @@ import urllib.request
 import re
 import time
 
+from argparse import ArgumentParser
 from selenium import webdriver
 
-def downloadPinterestImages():
+def downloadPinterestImages(link):
     browser = webdriver.Firefox(executable_path=r'geckodriver.exe')
 
-    link="https://gr.pinterest.com/pin/288934132334754326/"
     browser.get(link)
 
     time.sleep(2)
@@ -56,5 +56,8 @@ def downloadPinterestImages():
             print("Broken Link") 
         
         
+parser = ArgumentParser()
+parser.add_argument("pinterest_URL")
+args = parser.parse_args()
 
-downloadPinterestImages()
+downloadPinterestImages(args.pinterest_URL)
