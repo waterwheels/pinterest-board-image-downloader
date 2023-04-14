@@ -1,0 +1,7 @@
+
+geckodriver
+Images/*
+geckodriver.log
+Pipfile
+.DS_Store
+raw.txt
