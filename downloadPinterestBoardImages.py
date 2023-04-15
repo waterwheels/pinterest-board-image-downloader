@@ -12,7 +12,8 @@ from selenium.webdriver.firefox.options import Options
 
 #xpath_pinboard = "//div[@data-test-id='MobileFeed']" # This div contains the actual pinterest board, not the "more like this" section
 xpath_pinboard = "//div[contains(@id, 'boardfeed')]" # This div contains the actual pinterest board, not the "more like this" section
-xpath_img = "//div[@class='PinCard__imageWrapper']/descendant::img" # Filters out only pin imgs, not user avatars
+# xpath_img = "//div[@class='PinCard__imageWrapper']/descendant::img" # Filters out only pin imgs, not user avatars
+xpath_img = "//div[@data-test-id='pin']/descendant::img" # Filters out only pin imgs, not user avatars
 xpath_end = "//h2[text()='More like this']" # matches the end of the pin-board
 
 
@@ -28,6 +29,7 @@ def downloadPinterestImages(link, max_scolls, sleep_delay):
     initial_height = browser.execute_script("return document.body.scrollHeight")
 
     c = 0
+    end = False
     while(True):
         c += 1
         print(f"Last scroll height {initial_height}")
@@ -43,45 +45,47 @@ def downloadPinterestImages(link, max_scolls, sleep_delay):
             print(f"reached maximum number of scrolls: {max_scolls}")
             break
 
-        if len(browser.find_elements(By.XPATH, xpath_end)) > 0:
+        if not end and len(browser.find_elements(By.XPATH, xpath_end)) > 0:
             print("Found end of board")
-            break
+            max_scolls = c + 1
+            end = True
 
         initial_height = new_height
     
-    time.sleep(10)
+    time.sleep(1)
 
     # Get the div containing the pins
     block = browser.find_element(By.XPATH, xpath_pinboard)
 
     # Grab only pin images (avoid users' profile pictures) 
     img_elements = block.find_elements(By.XPATH, xpath_img)
-    test = block.find_elements(By.XPATH, "//img")
 
     print(f"Found {len(img_elements)} elements matching {xpath_img}")
-    print(f"Found {len(img_elements)} image elements")
 
-    images = []
-    for this_image in img_elements:
-        smol = this_image.get_attribute('src')
-        original = re.sub('.com/.*?/','.com/originals/',smol,flags=re.DOTALL)
-        images.append([smol,original])
+
+
+
+    # images = []
+    # for this_image in img_elements:
+    #     smol = this_image.get_attribute('src')
+    #     original = re.sub('.com/.*?/','.com/originals/',smol,flags=re.DOTALL)
+    #     images.append([smol,original])
     
-    for img in images:
-        name = img[0].rsplit('/', 1)[-1]
-        print("Downloading " + name)
-        try:
-            print("    URL "+img[1])
-            #urllib.request.urlretrieve(img[1], "images/"+name)
-        except:
-            print("        Broken link to original, trying resampled image link")
-            try:
-                print("        URL "+img[1])
-                #urllib.request.urlretrieve(img[0], "images/thumb-"+name)
-            except:
-                print("       both links broken. Sorry :(")
+    # for img in images:
+    #     name = img[0].rsplit('/', 1)[-1]
+    #     print("Downloading " + name)
+    #     try:
+    #         print("    URL "+img[1])
+    #         #urllib.request.urlretrieve(img[1], "images/"+name)
+    #     except:
+    #         print("        Broken link to original, trying resampled image link")
+    #         try:
+    #             print("        URL "+img[1])
+    #             #urllib.request.urlretrieve(img[0], "images/thumb-"+name)
+    #         except:
+    #             print("       both links broken. Sorry :(")
 
-    #browser.quit()
+    browser.quit()
         
         
 parser = ArgumentParser()
