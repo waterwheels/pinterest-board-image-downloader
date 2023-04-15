@@ -35,10 +35,8 @@ def downloadPinterestImages(link, max_scolls, sleep_delay):
 
         name = image_data[0].rsplit('/', 1)[-1]
         if "--" in name:
-            name = name.split("--", 1)[-1].rsplit(".jpg", 1)[0] + "-"
-        else:
-            name = ""
-        name = f"{name}{token_hex(2)}.jpg"
+            temp = name.split("--", 1)
+            name = f"{temp[-1].rsplit('.jpg', 1)[0]}-{temp[0]}.jpg"
 
         print("Downloading " + name)
         try:
