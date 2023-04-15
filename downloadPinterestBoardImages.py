@@ -2,6 +2,7 @@
 import urllib.request
 import re
 
+from secrets import token_hex
 from time import sleep
 from argparse import ArgumentParser
 from selenium import webdriver
@@ -18,17 +19,13 @@ docscroll_full = "document.body.scrollHeight"
 docscroll_window = "window.innerHeight"
 
 # xpaths to find pin images and the end of the board
-xpath_img = "//div[contains(@id, 'boardfeed')]/descendant::div[@data-test-id='pin']/descendant::img"
+xpath_img = "//div[contains(@id, 'boardfeed')]/descendant::div[@class='PinCard__imageWrapper']/descendant::img"
 xpath_end = "//h2[text()='More like this']"
 
-def downloadPinterestImages(link, max_scolls, sleep_delay, headless):
-    opts = Options()
-    opts.headless = headless
-    browser = webdriver.Firefox(executable_path=r'geckodriver.exe', options=opts)
-
+def downloadPinterestImages(link, max_scolls, sleep_delay):
     # Load page
     browser.get(link)
-    sleep(3)
+    sleep(1)
 
     image_links = set()
 
@@ -37,14 +34,18 @@ def downloadPinterestImages(link, max_scolls, sleep_delay, headless):
         image_data = [image_url, re.sub('.com/.*?/','.com/originals/',image_url,flags=re.DOTALL)]
 
         name = image_data[0].rsplit('/', 1)[-1]
+        if "--" in name:
+            name = name.split("--", 1)[-1].rsplit(".jpg", 1)[0] + "-"
+        else:
+            name = ""
+        name = f"{name}{token_hex(2)}.jpg"
+
         print("Downloading " + name)
         try:
-            print("    URL "+image_data[1])
             urllib.request.urlretrieve(image_data[1], "images/"+name)
         except:
             print("        Broken link to original, trying resampled image link")
             try:
-                print("        URL "+image_data[1])
                 urllib.request.urlretrieve(image_data[0], "images/thumb-"+name)
             except:
                 print("       both links broken. Sorry :(")
@@ -87,6 +88,10 @@ def downloadPinterestImages(link, max_scolls, sleep_delay, headless):
             print("Stopped finding new images")
             break
 
+        if c >= max_scolls:
+            print("Reached maximum number of scrolls")
+            break
+
         print(f"Scolled to {scroll(browser)}")
 
     print(f"Found {len(image_links)} images total")
@@ -95,84 +100,22 @@ def downloadPinterestImages(link, max_scolls, sleep_delay, headless):
     for this_url in image_links:
         download_image(this_url)
 
-    browser.quit()
-
-def downloadPinterestImagesOLD(link, max_scolls, sleep_delay):
-    opts = Options()
-    # opts.headless = True
-    browser = webdriver.Firefox(executable_path=r'geckodriver.exe', options=opts)
-
-    # Load page
-    browser.get(link)
-
-    # Scroll the page until we find the "more like this" heading, can't scroll more, or exceed max number of scrolls
-    initial_height = browser.execute_script("return document.body.scrollHeight")
-
-    c = 0
-    end = False
-    while(True):
-        c += 1
-        print(f"Last scroll height {initial_height}")
-        browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        sleep(sleep_delay)
-        new_height = browser.execute_script("return document.body.scrollHeight")
-
-        if new_height == initial_height:
-            print("Found end of page, no more page to scroll")
-            break
-
-        if c > max_scolls:
-            print(f"reached maximum number of scrolls: {max_scolls}")
-            break
-
-        if not end and len(browser.find_elements(By.XPATH, xpath_end)) > 0:
-            print("Found end of board")
-            max_scolls = c + 1
-            end = True
-
-        initial_height = new_height
-    
-    sleep(1)
-
-    # Get the div containing the pins
-    block = browser.find_element(By.XPATH, xpath_pinboard)
-
-    # Grab only pin images (avoid users' profile pictures) 
-    img_elements = block.find_elements(By.XPATH, xpath_img)
-
-    print(f"Found {len(img_elements)} elements matching {xpath_img}")
-
-
-
-
-    images = []
-    for this_image in img_elements:
-        smol = this_image.get_attribute('src')
-        original = re.sub('.com/.*?/','.com/originals/',smol,flags=re.DOTALL)
-        images.append([smol,original])
-    
-    for img in images:
-        name = img[0].rsplit('/', 1)[-1]
-        print("Downloading " + name)
-        try:
-            print("    URL "+img[1])
-            #urllib.request.urlretrieve(img[1], "images/"+name)
-        except:
-            print("        Broken link to original, trying resampled image link")
-            try:
-                print("        URL "+img[1])
-                #urllib.request.urlretrieve(img[0], "images/thumb-"+name)
-            except:
-                print("       both links broken. Sorry :(")
-
-    browser.quit()
         
         
 parser = ArgumentParser()
 parser.add_argument("pinterest_URL")
 parser.add_argument('-s', '--scroll_limit', type=int, default=10)
-parser.add_argument('-d', '--delay', type=int, default=3)
-parser.add_argument('-n', '--headless', action='store_true', default=False)
+parser.add_argument('-d', '--delay', type=int, default=2)
+parser.add_argument('-n', '--headless', action='store_true', default=True)
 args = parser.parse_args()
 
-downloadPinterestImages(args.pinterest_URL, args.scroll_limit, args.delay, args.headless)
+opts = Options()
+opts.headless = args.headless
+if args.headless:
+    opts.add_argument("--width=3000")
+    opts.add_argument("--height=8000")
+browser = webdriver.Firefox(executable_path=r'geckodriver.exe', options=opts)
+
+downloadPinterestImages(args.pinterest_URL, args.scroll_limit, args.delay)
+
+browser.quit()
