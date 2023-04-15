@@ -2,7 +2,6 @@
 import urllib.request
 import re
 
-from secrets import token_hex
 from time import sleep
 from argparse import ArgumentParser
 from selenium import webdriver
@@ -35,10 +34,8 @@ def downloadPinterestImages(link, max_scolls, sleep_delay):
 
         name = image_data[0].rsplit('/', 1)[-1]
         if "--" in name:
-            name = name.split("--", 1)[-1].rsplit(".jpg", 1)[0] + "-"
-        else:
-            name = ""
-        name = f"{name}{token_hex(2)}.jpg"
+            temp = name.split("--", 1)
+            name = f"{temp[-1].rsplit('.jpg', 1)[0]}-{temp[0]}.jpg"
 
         print("Downloading " + name)
         try:
@@ -106,12 +103,12 @@ parser = ArgumentParser()
 parser.add_argument("pinterest_URL")
 parser.add_argument('-s', '--scroll_limit', type=int, default=10)
 parser.add_argument('-d', '--delay', type=int, default=2)
-parser.add_argument('-n', '--headless', action='store_true', default=True)
+parser.add_argument('-g', '--gui', action='store_true', default=False)
 args = parser.parse_args()
 
 opts = Options()
-opts.headless = args.headless
-if args.headless:
+opts.headless = not args.gui
+if not args.gui:
     opts.add_argument("--width=3000")
     opts.add_argument("--height=8000")
 browser = webdriver.Firefox(executable_path=r'geckodriver.exe', options=opts)
