@@ -27,3 +27,8 @@ If Pinterest changes the page structure more than a little, the XPATH the script
     //div[contains(@id, 'boardfeed')]                   <-- finds the board main div (not the "more like this" block)
     /descendant::div[@class='PinCard__imageWrapper']    <-- finds part of a pin deep enough in to avoid grabbing user avatars
     /descendant::img"                                   <-- finds the actual img object
+
+### Plans:
+Add loop structure so you can give it a list of Pinterest board URLs and it will do them 1-by-1 (into folders named after the board?)
+
+Get pin alt-text, and include in file name or metadata. Could do this if there's a way to make a hashable object (for the set) out of pin thumB URL and other data
