@@ -76,46 +76,43 @@ def downloadPinterestImages(link, max_scolls, sleep_delay, prompt=False):
     found_end = False
     num_found = 0
     times_no_new_images = 0
+    i = 0
 
-    while(True):
-        c += 1
-        # Grab only pin images (avoid user profile pictures) 
-        img_elements = browser.find_elements(By.XPATH, xpath_img)
+    with Futures.ThreadPoolExecutor(max_workers=16) as ex:
+        while(True):
+            c += 1
+            # Grab only pin images (avoid user profile pictures) 
+            img_elements = browser.find_elements(By.XPATH, xpath_img)
 
-        for x in img_elements:
-            #print(x)
-            source = x.get_attribute('src')
-            image_links.add(source)
+            for x in img_elements:
+                i += 1
+                source = x.get_attribute('src')
+                image_links.add(source)
+                ex.submit(download_image, source, save_path, i)
 
-        num_new = len(image_links) - num_found
-        num_found += num_new
+            num_new = len(image_links) - num_found
+            num_found += num_new
 
-        print(f"Collected {num_new} new images")
+            print(f"Collected {num_new} new images")
 
-        if num_new == 0:
-            if len(browser.find_elements(By.XPATH, xpath_end)) > 0:
-                print("Found end of board")
+            if num_new == 0:
+                if len(browser.find_elements(By.XPATH, xpath_end)) > 0:
+                    print("Found end of board")
+                    break
+                else:
+                    times_no_new_images += 1
+
+            if times_no_new_images >= 3:
+                print("Stopped finding new images")
                 break
-            else:
-                times_no_new_images += 1
 
-        if times_no_new_images >= 3:
-            print("Stopped finding new images")
-            break
+            if c >= max_scolls:
+                print("Reached maximum number of scrolls")
+                break
 
-        if c >= max_scolls:
-            print("Reached maximum number of scrolls")
-            break
-
-        print(f"Scolled to {scroll(browser)}")
+            print(f"Scolled to {scroll(browser)}")
 
     print(f"Found {len(image_links)} images total")
-
-    # Download each image
-    with Futures.ThreadPoolExecutor(max_workers=16) as ex:
-        for i, this_url in enumerate(image_links):
-            ex.submit(download_image, this_url, save_path, i)
-
     ex.shutdown(wait=True)
 
 
