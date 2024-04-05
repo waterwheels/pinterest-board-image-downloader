@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 import urllib.request
 import re
+import concurrent.futures as Futures
 
+from pathlib import Path
 from time import sleep
 from argparse import ArgumentParser
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.firefox.service import Service
 
 # Unused
 xpath_pinboard = "//div[contains(@id, 'boardfeed')]" # This div contains the actual pinterest board, not the "more like this" section
@@ -19,16 +22,31 @@ docscroll_window = "window.innerHeight"
 
 # xpaths to find pin images and the end of the board
 xpath_img = "//div[contains(@id, 'boardfeed')]/descendant::div[@class='PinCard__imageWrapper']/descendant::img"
+xpath_seeMore = "xpath for see more button to click?"
 xpath_end = "//h2[text()='More like this']"
 
-def downloadPinterestImages(link, max_scolls, sleep_delay):
+def downloadPinterestImages(link, max_scolls, sleep_delay, prompt=False):
+    # Get name for folder
+    name = link.split("/")
+    name = name[-1] if name[-1] else name[-2]
+
+    print(f"Name for board: {name}")
+
     # Load page
     browser.get(link)
     sleep(1)
 
+    if prompt:
+        proceed = input("Ready to start? y/n ")
+        if "y" not in proceed:
+            exit(0)
+
+    save_path = Path(f"Images/{name}")
+    save_path.mkdir(parents=True, exist_ok=True)
+
     image_links = set()
 
-    def download_image(image_url):
+    def download_image(image_url, save_path, i):
         # get full res of each url
         image_data = [image_url, re.sub('.com/.*?/','.com/originals/',image_url,flags=re.DOTALL)]
 
@@ -37,15 +55,15 @@ def downloadPinterestImages(link, max_scolls, sleep_delay):
             temp = name.split("--", 1)
             name = f"{temp[-1].rsplit('.jpg', 1)[0]}-{temp[0]}.jpg"
 
-        print("Downloading " + name)
+        print(f"{i:<4}: Downloading " + name)
         try:
-            urllib.request.urlretrieve(image_data[1], "images/"+name)
-        except:
-            print("        Broken link to original, trying resampled image link")
+            urllib.request.urlretrieve(image_data[1], save_path / name)
+        except Exception as e:
+            print(f"{i:<4}:        Broken link to original, trying resampled image link\n{e}")
             try:
-                urllib.request.urlretrieve(image_data[0], "images/thumb-"+name)
+                urllib.request.urlretrieve(image_data[0], save_path / f"thumb-{name}")
             except:
-                print("       both links broken. Sorry :(")
+                print(f"{i:<4}:        both links broken. Sorry :(")
 
     def scroll(browser, amt=docscroll_window):
         browser.execute_script(f"window.scrollBy(0, {amt});")
@@ -94,8 +112,12 @@ def downloadPinterestImages(link, max_scolls, sleep_delay):
     print(f"Found {len(image_links)} images total")
 
     # Download each image
-    for this_url in image_links:
-        download_image(this_url)
+    with Futures.ThreadPoolExecutor(max_workers=16) as ex:
+        for i, this_url in enumerate(image_links):
+            ex.submit(download_image, this_url, save_path, i)
+
+    ex.shutdown(wait=True)
+
 
         
         
@@ -107,12 +129,13 @@ parser.add_argument('-g', '--gui', action='store_true', default=False)
 args = parser.parse_args()
 
 opts = Options()
-opts.headless = not args.gui
 if not args.gui:
+    opts.add_argument("-headless")
     opts.add_argument("--width=3000")
-    opts.add_argument("--height=8000")
-browser = webdriver.Firefox(executable_path=r'geckodriver.exe', options=opts)
+    opts.add_argument("--height=10000")
 
-downloadPinterestImages(args.pinterest_URL, args.scroll_limit, args.delay)
+service = Service('geckodriver.exe')
 
-browser.quit()
+with webdriver.Firefox(service=service, options=opts) as browser:
+    downloadPinterestImages(args.pinterest_URL, args.scroll_limit,
+        args.delay, args.gui)
