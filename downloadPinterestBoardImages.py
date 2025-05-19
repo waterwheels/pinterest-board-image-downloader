@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
-import urllib.request
-import re
 import concurrent.futures as Futures
-
+import re
+import urllib.request
+from argparse import ArgumentParser
 from pathlib import Path
 from time import sleep
-from argparse import ArgumentParser
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
+from webdriver_manager.firefox import GeckoDriverManager
 
 # Unused
 xpath_pinboard = "//div[contains(@id, 'boardfeed')]" # This div contains the actual pinterest board, not the "more like this" section
@@ -24,6 +25,7 @@ docscroll_window = "window.innerHeight"
 xpath_img = "//div[contains(@id, 'boardfeed')]/descendant::div[@class='PinCard__imageWrapper']/descendant::img"
 xpath_seeMore = "xpath for see more button to click?"
 xpath_end = "//h2[text()='More like this']"
+
 
 def downloadPinterestImages(link, max_scolls, sleep_delay, prompt=False):
     # Get name for folder
@@ -73,13 +75,12 @@ def downloadPinterestImages(link, max_scolls, sleep_delay, prompt=False):
     scroll(browser, 1)
 
     c = 0
-    found_end = False
     num_found = 0
     times_no_new_images = 0
     i = 0
 
     with Futures.ThreadPoolExecutor(max_workers=16) as ex:
-        while(True):
+        while True:
             c += 1
             # Grab only pin images (avoid user profile pictures) 
             img_elements = browser.find_elements(By.XPATH, xpath_img)
@@ -116,8 +117,6 @@ def downloadPinterestImages(link, max_scolls, sleep_delay, prompt=False):
     ex.shutdown(wait=True)
 
 
-        
-        
 parser = ArgumentParser()
 parser.add_argument("pinterest_URL")
 parser.add_argument('-s', '--scroll_limit', type=int, default=10)
@@ -131,8 +130,9 @@ if not args.gui:
     opts.add_argument("--width=3000")
     opts.add_argument("--height=10000")
 
-service = Service('geckodriver.exe')
+service = Service(GeckoDriverManager().install())
 
 with webdriver.Firefox(service=service, options=opts) as browser:
-    downloadPinterestImages(args.pinterest_URL, args.scroll_limit,
+    downloadPinterestImages(
+        args.pinterest_URL, args.scroll_limit,
         args.delay, args.gui)
