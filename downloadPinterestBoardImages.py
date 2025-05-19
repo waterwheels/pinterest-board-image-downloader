@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 import concurrent.futures as Futures
+import logging
 import re
 import urllib.request
 from argparse import ArgumentParser
 from pathlib import Path
 from time import sleep
 
-from selenium import webdriver
+import selenium
+from rich.logging import RichHandler
+from selenium.common.exceptions import \
+    StaleElementReferenceException as StaleRefError
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
@@ -32,7 +36,7 @@ def downloadPinterestImages(link, max_scolls, sleep_delay, prompt=False):
     name = link.split("/")
     name = name[-1] if name[-1] else name[-2]
 
-    print(f"Name for board: {name}")
+    logging.info(f"Name for board: {name}")
 
     # Load page
     browser.get(link)
@@ -48,24 +52,26 @@ def downloadPinterestImages(link, max_scolls, sleep_delay, prompt=False):
 
     image_links = set()
 
-    def download_image(image_url, save_path, i):
-        # get full res of each url
-        image_data = [image_url, re.sub('.com/.*?/','.com/originals/',image_url,flags=re.DOTALL)]
+    def download_image(sources, save_path, i):
+        # get best res of each url
 
-        name = image_data[0].rsplit('/', 1)[-1]
-        if "--" in name:
-            temp = name.split("--", 1)
-            name = f"{temp[-1].rsplit('.jpg', 1)[0]}-{temp[0]}.jpg"
+        links = list(sources)
 
-        print(f"{i:<4}: Downloading " + name)
-        try:
-            urllib.request.urlretrieve(image_data[1], save_path / name)
-        except Exception as e:
-            print(f"{i:<4}:        Broken link to original, trying resampled image link\n{e}")
+        while links:
+            opt = links.pop()
+            link = opt.split(" ")[0]
             try:
-                urllib.request.urlretrieve(image_data[0], save_path / f"thumb-{name}")
-            except:
-                print(f"{i:<4}:        both links broken. Sorry :(")
+                urllib.request.urlretrieve(
+                    link, save_path / (link.split("/")[-1]))
+
+            except Exception as e:
+                logging.info(f"Failed:     {opt} - {e}")
+            else:
+                logging.info(f"Downloaded: {opt}")
+                return True
+
+        logging.info(f"No downloads worked for {sources[-1].split(' ')[0]}")
+        return sources
 
     def scroll(browser, amt=docscroll_window):
         browser.execute_script(f"window.scrollBy(0, {amt});")
@@ -80,59 +86,91 @@ def downloadPinterestImages(link, max_scolls, sleep_delay, prompt=False):
     i = 0
 
     with Futures.ThreadPoolExecutor(max_workers=16) as ex:
+        jobs = []
+
         while True:
             c += 1
+
+            prev = len(image_links)
+
             # Grab only pin images (avoid user profile pictures) 
             img_elements = browser.find_elements(By.XPATH, xpath_img)
 
             for x in img_elements:
                 i += 1
-                source = x.get_attribute('src')
-                image_links.add(source)
-                ex.submit(download_image, source, save_path, i)
+                try:
+                    sources = x.get_attribute('srcset')
+                except StaleRefError as e:
+                    logging.info(f"Stale reference error: {e}")
+                    continue
 
-            num_new = len(image_links) - num_found
+                sources = tuple([x.strip() for x in sources.split(",")])
+
+                if sources not in image_links:
+                    image_links.add(sources)
+                    jobs.append(
+                        ex.submit(download_image, sources, save_path, i))
+
+            num_new = len(image_links) - prev
             num_found += num_new
 
-            print(f"Collected {num_new} new images")
+            logging.info(f"Collected {num_new} new images")
 
             if num_new == 0:
-                if len(browser.find_elements(By.XPATH, xpath_end)) > 0:
-                    print("Found end of board")
-                    break
-                else:
-                    times_no_new_images += 1
+                # if len(browser.find_elements(By.XPATH, xpath_end)) > 0:
+                #     logging.info("Found end of board")
+                #     break
+                # else:
+                times_no_new_images += 1
 
-            if times_no_new_images >= 3:
-                print("Stopped finding new images")
+            if times_no_new_images >= 4:
+                logging.info("Stopped finding new images")
+                if prompt:
+                    proceed = input("Continue anyway? y/n ")
+                    if "y" in proceed.lower():
+                        times_no_new_images = 0
+                        continue
                 break
 
             if c >= max_scolls:
-                print("Reached maximum number of scrolls")
+                logging.info("Reached maximum number of scrolls")
                 break
 
-            print(f"Scolled to {scroll(browser)}")
+            logging.info(f"Scolled to {scroll(browser)}")
 
-    print(f"Found {len(image_links)} images total")
+        logging.info("Checking failed downloads...")
+        for x in Futures.as_completed(jobs):
+            if x.result() is not True:
+                logging.info(f"Retrying {x[-1]}")
+
+
+    logging.info(f"Found {len(image_links)} images total")
     ex.shutdown(wait=True)
 
 
 parser = ArgumentParser()
+parser.add_argument('-d', '--debug', action='store_true', default=False)
 parser.add_argument("pinterest_URL")
-parser.add_argument('-s', '--scroll_limit', type=int, default=10)
-parser.add_argument('-d', '--delay', type=int, default=2)
+parser.add_argument('-s', '--scroll_limit', type=int, default=100)
+parser.add_argument('--delay', type=int, default=2)
 parser.add_argument('-g', '--gui', action='store_true', default=False)
 args = parser.parse_args()
+
+logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format="%(message)s",
+        datefmt=" ",
+        handlers=[RichHandler(tracebacks_suppress=[selenium])])
 
 opts = Options()
 if not args.gui:
     opts.add_argument("-headless")
-    opts.add_argument("--width=3000")
-    opts.add_argument("--height=10000")
+    # opts.add_argument("--width=3000")
+    # opts.add_argument("--height=10000")
 
 service = Service(GeckoDriverManager().install())
 
-with webdriver.Firefox(service=service, options=opts) as browser:
+with selenium.webdriver.Firefox(service=service, options=opts) as browser:
     downloadPinterestImages(
         args.pinterest_URL, args.scroll_limit,
         args.delay, args.gui)
